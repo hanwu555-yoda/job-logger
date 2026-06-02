@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Logger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #0f0f0f;
+    color: #e8e4dc;
+    min-height: 100vh;
+    padding: 36px 20px;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.4); cursor: pointer; }
+  select option { background: #1a1a1a; color: #e8e4dc; }
+  :focus-visible { outline: 1px solid #444; outline-offset: 2px; }
+  ::placeholder { color: #3a3a3a; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+const DATA_SOURCE_ID = "2d69e9b8-9420-8137-a901-000be01796a6";
+const NOTION_MCP_URL = "https://mcp.notion.com/mcp";
+const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
+const MODEL = "claude-sonnet-4-20250514";
+
+const STATUS_OPTIONS = ["Applied", "Not Started", "Interviewed", "Offer", "Accepted", "Rejected"];
+const NEXT_ACTION_OPTIONS = ["Waiting", "Follow up", "Send email", "Phone Screening", "Prepare Interview", "Hiring Manager Interview Prep", "Decide", "Rejected"];
+
+const css = {
+  wrap: { maxWidth: 640, margin: "0 auto" },
+  h1: { fontSize: 20, fontWeight: 600, letterSpacing: "-0.4px", marginBottom: 4 },
+  sub: { fontSize: 13, color: "#4a4a4a", marginBottom: 32 },
+  label: { display: "block", fontSize: 10, fontFamily: "'DM Mono', monospace", color: "#4a4a4a", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 7 },
+  input: {
+    width: "100%", background: "#141414", border: "1px solid #222",
+    borderRadius: 6, color: "#e8e4dc", fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13.5, padding: "10px 13px", outline: "none",
+    transition: "border-color 0.15s"
+  },
+  select: {
+    width: "100%", background: "#141414", border: "1px solid #222",
+    borderRadius: 6, color: "#e8e4dc", fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13.5, padding: "10px 13px", outline: "none", appearance: "none",
+    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center"
+  },
+  row: { marginBottom: 18 },
+  twoCol: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 0 },
+  divider: { border: "none", borderTop: "1px solid #1c1c1c", margin: "24px 0" },
+  chip: (active) => ({
+    padding: "5px 13px", borderRadius: 20, fontSize: 11.5,
+    fontFamily: "'DM Mono', monospace", cursor: "pointer", border: "1px solid",
+    background: active ? "#e8e4dc" : "transparent",
+    color: active ? "#0f0f0f" : "#555",
+    borderColor: active ? "#e8e4dc" : "#2a2a2a",
+    transition: "all 0.12s"
+  }),
+  chips: { display: "flex", flexWrap: "wrap", gap: 7 },
+  btnPrimary: {
+    padding: "11px 24px", background: "#e8e4dc", color: "#0f0f0f",
+    border: "none", borderRadius: 6, fontSize: 13.5, fontWeight: 600,
+    cursor: "pointer", transition: "opacity 0.15s", fontFamily: "'DM Sans', sans-serif"
+  },
+  btnSecondary: {
+    padding: "11px 24px", background: "transparent", color: "#666",
+    border: "1px solid #222", borderRadius: 6, fontSize: 13.5,
+    cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginLeft: 10
+  },
+  badge: {
+    display: "inline-block", fontSize: 10, fontFamily: "'DM Mono', monospace",
+    padding: "2px 8px", borderRadius: 10,
+    background: "#1a2a1a", border: "1px solid #2d4a2d", color: "#7bc47b",
+    marginLeft: 8, verticalAlign: "middle", letterSpacing: "0.05em"
+  },
+  errorBadge: {
+    display: "inline-block", fontSize: 10, fontFamily: "'DM Mono', monospace",
+    padding: "2px 8px", borderRadius: 10,
+    background: "#2a1a1a", border: "1px solid #4a2d2d", color: "#c47b7b",
+    marginLeft: 8, verticalAlign: "middle"
+  },
+  note: { fontSize: 12, color: "#3a3a3a", marginTop: 7 },
+  success: {
+    background: "#111", border: "1px solid #1e2e1e",
+    borderRadius: 10, padding: "28px 24px", textAlign: "center"
+  },
+  successTitle: { fontSize: 16, fontWeight: 600, color: "#7bc47b", marginBottom: 6 },
+  successSub: { fontSize: 13, color: "#4a4a4a" },
+  errText: { fontSize: 12, color: "#c47b7b", marginTop: 8 },
+};
+
+function Field({ label, badge, children, note }) {
+  return (
+    <div style={css.row}>
+      <label style={css.label}>{label}{badge}</label>
+      {children}
+      {note && <p style={css.note}>{note}</p>}
+    </div>
+  );
+}
+
+function App() {
+  const today = new Date().toISOString().split("T")[0];
+
+  const emptyForm = () => ({
+    company: "", position: "", status: "Applied", applicationDate: today,
+    salary: "", website: "", contact: "", referenceLink: "", notes: "", nextAction: []
+  });
+
+  const [url, setUrl] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractState, setExtractState] = useState(null); // null | "ok" | "error"
+  const [form, setForm] = useState(emptyForm());
+  const [logging, setLogging] = useState(false);
+  const [logError, setLogError] = useState("");
+  const [success, setSuccess] = useState(null);
+
+  function setField(k, v) { setForm(f => ({ ...f, [k]: v })); }
+
+  function toggleAction(v) {
+    setForm(f => ({
+      ...f,
+      nextAction: f.nextAction.includes(v) ? f.nextAction.filter(x => x !== v) : [...f.nextAction, v]
+    }));
+  }
+
+  async function extract() {
+    if (!url.trim()) return;
+    setExtracting(true);
+    setExtractState(null);
+
+    const prompt = `Fetch this job posting URL and extract the following fields. Return ONLY raw JSON, no markdown, no explanation.
+
+URL: ${url}
+
+Extract:
+- company: company name
+- position: exact job title
+- salary: salary or pay range if listed, else empty string
+- website: company website if mentioned, else empty string
+
+JSON format: {"company":"","position":"","salary":"","website":""}`;
+
+    try {
+      const res = await fetch(ANTHROPIC_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL, max_tokens: 500,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content.filter(b => b.type === "text").map(b => b.text).join("");
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      setForm(f => ({
+        ...f,
+        company: parsed.company || f.company,
+        position: parsed.position || f.position,
+        salary: parsed.salary || f.salary,
+        website: parsed.website || f.website,
+        referenceLink: url,
+      }));
+      setExtractState("ok");
+    } catch {
+      setExtractState("error");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function log() {
+    if (!form.company.trim() || !form.position.trim()) {
+      setLogError("Company and Position are required.");
+      return;
+    }
+    setLogging(true);
+    setLogError("");
+
+    const prompt = `Create a new page in Notion data source ${DATA_SOURCE_ID} with these exact values:
+- Company (title): ${form.company}
+- Position: ${form.position}
+- Status (multi_select): ${form.status}
+- Application Date: ${form.applicationDate}
+- Salary: ${form.salary}
+- Website: ${form.website}
+- Contact: ${form.contact}
+- Reference Link: ${form.referenceLink}
+- Notes: ${form.notes}
+- Next Action (multi_select): ${form.nextAction.length ? form.nextAction.join(", ") : "Waiting"}
+
+Use notion-create-pages with data_source_id parent. Return only: {"success":true} or {"success":false,"error":"reason"}`;
+
+    try {
+      const res = await fetch(ANTHROPIC_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL, max_tokens: 800,
+          messages: [{ role: "user", content: prompt }],
+          mcp_servers: [{ type: "url", url: NOTION_MCP_URL, name: "notion-mcp" }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content.filter(b => b.type === "text").map(b => b.text).join("");
+      let parsed;
+      try { parsed = JSON.parse(text.replace(/```json|```/g, "").trim()); }
+      catch { parsed = { success: true }; }
+
+      if (parsed.success !== false) {
+        setSuccess({ company: form.company, position: form.position, date: form.applicationDate });
+        setUrl(""); setExtractState(null); setForm(emptyForm());
+      } else {
+        setLogError(parsed.error || "Something went wrong.");
+      }
+    } catch {
+      setLogError("Something went wrong. Try again.");
+    } finally {
+      setLogging(false);
+    }
+  }
+
+  if (success) {
+    return (
+      <div style={css.wrap}>
+        <div style={css.success}>
+          <p style={css.successTitle}>Logged to Notion</p>
+          <p style={css.successSub}>{success.company} — {success.position}</p>
+          <p style={{ ...css.successSub, marginTop: 4, fontSize: 11, fontFamily: "'DM Mono', monospace", color: "#333" }}>{success.date}</p>
+          <button onClick={() => setSuccess(null)} style={{ ...css.btnPrimary, marginTop: 20 }}>Log Another</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={css.wrap}>
+      <h1 style={css.h1}>Job Logger</h1>
+      <p style={css.sub}>Paste a posting link to auto-fill, then add what's missing.</p>
+
+      {/* URL row */}
+      <Field
+        label="Job Posting URL"
+        badge={
+          extractState === "ok" ? <span style={css.badge}>Extracted</span> :
+          extractState === "error" ? <span style={css.errorBadge}>Failed — fill in below</span> : null
+        }
+      >
+        <div style={{ display: "flex", gap: 10 }}>
+          <input
+            style={{ ...css.input, flex: 1 }}
+            value={url}
+            onChange={e => { setUrl(e.target.value); setExtractState(null); }}
+            onKeyDown={e => e.key === "Enter" && extract()}
+            placeholder="https://jobs.company.com/..."
+          />
+          <button
+            onClick={extract}
+            disabled={extracting || !url.trim()}
+            style={{ ...css.btnPrimary, flexShrink: 0, opacity: extracting || !url.trim() ? 0.35 : 1, cursor: extracting || !url.trim() ? "not-allowed" : "pointer" }}
+          >
+            {extracting ? "Extracting..." : "Extract"}
+          </button>
+        </div>
+        {!extractState && <p style={css.note}>Hit Extract or press Enter. Fill in anything it misses below.</p>}
+      </Field>
+
+      <hr style={css.divider} />
+
+      {/* Two col rows */}
+      <div style={css.twoCol}>
+        <Field label="Company *">
+          <input style={css.input} value={form.company} onChange={e => setField("company", e.target.value)} placeholder="Patagonia" />
+        </Field>
+        <Field label="Position *">
+          <input style={css.input} value={form.position} onChange={e => setField("position", e.target.value)} placeholder="Brand Marketing Manager" />
+        </Field>
+      </div>
+
+      <div style={css.twoCol}>
+        <Field label="Status">
+          <select style={css.select} value={form.status} onChange={e => setField("status", e.target.value)}>
+            {STATUS_OPTIONS.map(o => <option key={o}>{o}</option>)}
+          </select>
+        </Field>
+        <Field label="Application Date">
+          <input style={css.input} type="date" value={form.applicationDate} onChange={e => setField("applicationDate", e.target.value)} />
+        </Field>
+      </div>
+
+      <div style={css.twoCol}>
+        <Field label="Salary">
+          <input style={css.input} value={form.salary} onChange={e => setField("salary", e.target.value)} placeholder="$75,000" />
+        </Field>
+        <Field label="Website">
+          <input style={css.input} value={form.website} onChange={e => setField("website", e.target.value)} placeholder="https://..." />
+        </Field>
+      </div>
+
+      <div style={css.twoCol}>
+        <Field label="Contact">
+          <input style={css.input} value={form.contact} onChange={e => setField("contact", e.target.value)} placeholder="recruiter@company.com" />
+        </Field>
+        <Field label="Reference Link">
+          <input style={css.input} value={form.referenceLink} onChange={e => setField("referenceLink", e.target.value)} placeholder="Auto-filled from URL above" />
+        </Field>
+      </div>
+
+      <Field label="Notes">
+        <input style={css.input} value={form.notes} onChange={e => setField("notes", e.target.value)} placeholder="Anything worth noting" />
+      </Field>
+
+      <hr style={css.divider} />
+
+      <Field label="Next Action">
+        <div style={css.chips}>
+          {NEXT_ACTION_OPTIONS.map(o => (
+            <button key={o} onClick={() => toggleAction(o)} style={css.chip(form.nextAction.includes(o))}>{o}</button>
+          ))}
+        </div>
+      </Field>
+
+      <hr style={css.divider} />
+
+      {logError && <p style={css.errText}>{logError}</p>}
+
+      <div style={{ marginTop: logError ? 12 : 0 }}>
+        <button
+          onClick={log}
+          disabled={logging}
+          style={{ ...css.btnPrimary, opacity: logging ? 0.35 : 1, cursor: logging ? "not-allowed" : "pointer" }}
+        >
+          {logging ? "Logging..." : "Log to Notion"}
+        </button>
+        <button onClick={() => { setForm(emptyForm()); setUrl(""); setExtractState(null); setLogError(""); }} style={css.btnSecondary}>
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
